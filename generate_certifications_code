@@ -1,0 +1,182 @@
+import pandas as pd
+from docx import Document
+import os
+import gender_guesser.detector as gender
+
+# =========================
+# LOAD ALL SHEETS
+# =========================
+
+all_sheets = pd.read_excel(
+    "Student Detail XII.xls",
+    sheet_name=None
+)
+
+# =========================
+# OUTPUT FOLDER
+# =========================
+
+output_folder = "Generated_Certificates"
+os.makedirs(output_folder, exist_ok=True)
+
+# =========================
+# GENDER DETECTOR
+# =========================
+
+detector = gender.Detector()
+
+# =========================
+# REPLACE TEXT FUNCTION
+# =========================
+
+def replace_text_preserve_style(doc, replacements):
+
+    bold_fields = [
+        "{{NAME}}",
+        "{{FATHER_NAME}}",
+        "{{ADMISSION_NO}}",
+        "{{ROLL_NO}}"
+    ]
+
+    for para in doc.paragraphs:
+
+        for key, value in replacements.items():
+
+            if key in para.text:
+
+                # Process each run
+                for run in para.runs:
+
+                    if key in run.text:
+
+                        # Replace placeholder
+                        run.text = run.text.replace(
+                            key,
+                            str(value)
+                        )
+
+                        # Apply bold only to selected fields
+                        if key in bold_fields:
+                            run.bold = True
+
+# =========================
+# PROCESS EACH SHEET
+# =========================
+
+for sheet_name, df in all_sheets.items():
+
+    print(f"Processing Sheet: {sheet_name}")
+
+    # Clean column names
+    df.columns = df.columns.str.strip()
+
+    # Create folder for each sheet
+    sheet_folder = os.path.join(
+        output_folder,
+        sheet_name
+    )
+
+    os.makedirs(sheet_folder, exist_ok=True)
+
+    # =========================
+    # PROCESS EACH STUDENT
+    # =========================
+
+    for index, row in df.iterrows():
+
+        # Student name
+        name = str(
+            row["Student Name"]
+        ).title()
+
+        # First name
+        first_name = name.split()[0]
+
+        # Detect gender
+        detected_gender = detector.get_gender(
+            first_name
+        )
+
+        # Gender logic
+        if detected_gender in [
+            "male",
+            "mostly_male"
+        ]:
+
+            pronoun = "He"
+            relation = "son"
+
+        else:
+
+            pronoun = "She"
+            relation = "daughter"
+
+        # =========================
+        # LOAD TEMPLATE
+        # =========================
+
+        doc = Document("template.docx")
+
+        # =========================
+        # PLACEHOLDERS
+        # =========================
+
+        replacements = {
+
+            "{{NAME}}": name,
+
+            "{{FATHER_NAME}}": str(
+                row["FatherName"]
+            ).title(),
+
+            "{{ADMISSION_NO}}": str(
+                row["Admission No"]
+            ),
+
+            "{{ROLL_NO}}": str(
+                row["RollNo"]
+            ),
+
+            "{{HE_SHE}}": pronoun,
+
+            "{{SON_DAUGHTER}}": relation
+        }
+
+        # =========================
+        # REPLACE TEXT
+        # =========================
+
+        replace_text_preserve_style(
+            doc,
+            replacements
+        )
+
+        # =========================
+        # SAFE FILE NAME
+        # =========================
+
+        safe_name = name.replace(
+            " ",
+            "_"
+        )
+
+        # =========================
+        # SAVE FILE
+        # =========================
+
+        output_path = os.path.join(
+
+            sheet_folder,
+
+            f"{safe_name}_Certificate.docx"
+        )
+
+        doc.save(output_path)
+
+# =========================
+# FINISHED
+# =========================
+
+print(
+    "All certificates generated successfully!"
+)
